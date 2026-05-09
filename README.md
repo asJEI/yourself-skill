@@ -2,7 +2,7 @@
 
 > 与其蒸馏别人，不如蒸馏自己。欢迎加入数字永生。
 
-##声明：
+## 声明：
 本项目是基于https://github.com/notdog1998/yourself-skill仓库的自用skills，主要修改点为删除除微信外的上传途径，同时优化提示词使agent更侧重于学习理解回复而不是单纯的输出用户口癖。并且优化记忆库筛选，删去无意义低质量聊天记录
 
 `create-yourself` 是一个运行在 Cursor / Claude Code 场景中的自我蒸馏 Skill：
