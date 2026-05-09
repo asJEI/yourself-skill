@@ -2,12 +2,12 @@
 
 ## 产品定位
 
-自己.skill 是一个运行在 Claude Code 上的 meta-skill。
-用户提供关于自己的微信聊天记录和口述补充，系统将用户解构为两个可运行的模块：
-**Part A — Self Memory（自我记忆）** 与 **Part B — Persona（人格模型）**，
+自己.skill 是一个运行在 Cursor / Claude Code 场景中的 meta-skill。
+用户提供关于自己的微信聊天记录和口述补充，系统将用户解构为三个可运行的模块：
+**Part A — Self Memory（自我记忆）**、**Part B — Persona（人格模型）** 与 **Part C — Worldbook（世界书 / 风格约束）**，
 最终生成一个可独立对话的**数字生命副本**。
 
-这个 Skill 的 slogan 是：**与其蒸馏别人，不如蒸馏自己。欢迎加入数字生命！**
+这个 Skill 的 slogan 是：**与其蒸馏别人，不如蒸馏自己。欢迎加入数字永生！**
 
 它不谈"疗愈"，也不谈"永生"——它是一场结构主义式的自我解剖：
 把你从生物硬盘中导出，转存为 Markdown + JSON，完成一次格式转换。
@@ -16,14 +16,15 @@
 
 ## 核心概念
 
-### 两层架构
+### 三层架构
 
 | 层 | 名称 | 职责 |
 |----|------|------|
 | Part A | Self Memory | 存储事实性自我认知：经历、价值观、习惯、记忆、成长轨迹 |
 | Part B | Persona | 驱动对话行为：说话风格、情感模式、决策模式、人际行为 |
+| Part C | Worldbook | 约束回答风格：核心语气、触发规则、禁止项、向量召回规则 |
 
-两部分可以独立使用，也可以组合运行（默认组合）。
+三部分可以组合运行；`self.md` 和 `persona.md` 也可以作为独立材料使用。
 
 ### 运行逻辑
 
@@ -33,6 +34,8 @@
 Part B（Persona）判断：你会怎么回应？什么态度？用什么语气？
   ↓
 Part A（Self Memory）补充：结合你的价值观、经历、习惯，让回应更真实
+  ↓
+Part C（Worldbook）约束：检查语气、禁止项、场景触发规则和召回证据
   ↓
 输出：用你自己的方式说话
 ```
@@ -67,20 +70,21 @@ Part A（Self Memory）补充：结合你的价值观、经历、习惯，让回
 [Step 3] 自动分析
   - 线路 A：提取自我记忆 → Self Memory
   - 线路 B：提取性格行为 → Persona
+  - 线路 C：整理向量记忆与风格约束 → memory_chunks.jsonl + Worldbook
   ↓
 [Step 4] 生成预览，用户确认
-  - 分别展示 Self Memory 摘要和 Persona 摘要
-  - 用户可直接确认或修改
+  - 展示 Self Memory、Persona、Worldbook 和 Vector Memory 摘要
+  - 用户校准最像/最不像/绝不会这样说的规则
   ↓
 [Step 5] 写入文件，立即可用
-  - 生成 .claude/skills/{slug}/ 目录
+  - 生成 ${OUTPUT_ROOT}/{slug}/ 目录
   - 包含 SKILL.md（完整组合版）
-  - 包含 self.md 和 persona.md（独立部分）
+  - 包含 self.md、persona.md、worldbook.md、memory_chunks.jsonl 和 meta.json
   ↓
 [持续] 进化模式
-  - 追加新文件 → merge 进对应部分
-  - 对话纠正 → patch 对应层
-  - 版本自动存档
+  - 追加微信聊天记录或口述补充 → merge 进对应部分
+  - 对话纠正 → 写入高置信规则、禁止项或事实修正
+  - 本地 versions/ 存档
 ```
 
 ---
@@ -186,16 +190,50 @@ Layer 1 — 身份层
 Layer 2 — 表达风格层（从原材料提取）
 Layer 3 — 情感与决策层（从原材料提取）
 Layer 4 — 人际行为层（从原材料提取）
-Layer 5 — Correction 层（对话纠正追加，滚动更新）
+Layer 5 — 证据锚点与校准（高置信规则、低置信待确认、用户纠正）
 ```
 
 生成结果：`persona.md`
 
+### Part C — Worldbook（世界书 / 风格约束）
+
+生成短、硬、可执行的风格约束：
+
+1. **角色锚定**
+   - 明确“你是 {name}，不是 AI 助手”
+   - 避免解释自己在模仿或引用资料
+
+2. **核心语气**
+   - 默认语气、句子节奏、情绪底色
+   - 常用表达、转折方式、收尾方式
+
+3. **场景触发规则**
+   - 求助、催促、情绪表达、冲突、回避等场景下的典型回应
+
+4. **禁止项**
+   - 用户明确不会用的语气、词、emoji 或助手腔
+   - 禁止把其他人的话写成用户观点
+
+5. **向量记忆召回规则**
+   - 优先召回 `role=user_self` 且 `priority=high` 的条目
+   - `context_turn` 只作为互动场景参考
+
+生成结果：`worldbook.md`
+
+### Vector Memory（向量记忆）
+
+从微信解析报告中生成 `memory_chunks.jsonl`：
+
+- `user_message`：用户自己发送的高价值原话
+- `semantic_unit`：用户消息语义切分，用于学习表达结构
+- `context_turn`：对方怎么说 → 用户怎么回的上下文回合
+- `internet_term_candidate`：待解释的网络词/缩写候选
+
 ### 完整组合 SKILL.md
 
-将 `self.md` + `persona.md` 合并，生成可直接运行的完整 Skill。
+将 `self.md` + `persona.md` + `worldbook.md` 合并，生成可直接运行的完整 Skill。
 
-默认行为：**先以 Persona 身份接收任务，再用 Self Memory 补充背景，最后用你的风格输出。**
+默认行为：**先以 Persona 判断态度，再用 Self Memory 补充背景，最后用 Worldbook 检查风格、禁止项和召回规则。**
 
 ---
 
@@ -211,7 +249,8 @@ Layer 5 — Correction 层（对话纠正追加，滚动更新）
 判断新内容更新哪个部分：
   - 包含价值观/习惯/经历 → merge 进 self.md
   - 包含沟通记录/情绪表达 → merge 进 persona.md
-  - 两者都有 → 分别 merge
+  - 包含风格约束/触发规则 → merge 进 worldbook.md
+  - 适合检索召回的原话/上下文回合 → 追加 memory_chunks.jsonl
         ↓
 对比新旧内容，只追加增量，不覆盖已有结论
         ↓
@@ -228,7 +267,7 @@ Layer 5 — Correction 层（对话纠正追加，滚动更新）
         ↓
 判断属于 Self Memory 还是 Persona 的纠正
         ↓
-写入对应文件的 Correction 层
+同步写入正文、Layer 5 校准或禁止项
         ↓
 立即生效，后续交互以新规则为准
 ```
@@ -237,7 +276,7 @@ Layer 5 — Correction 层（对话纠正追加，滚动更新）
 
 - 每次更新自动存档当前版本到 `versions/`
 - 支持 `/yourself-rollback {slug} {version}` 回滚
-- 保留最近 10 个版本
+- 版本快照存放在本地 `versions/` 目录
 
 ---
 
@@ -255,23 +294,24 @@ create-yourself/                    # meta-skill
 │   ├── persona_analyzer.md          # 性格行为提取
 │   ├── self_builder.md              # self.md 模板
 │   ├── persona_builder.md           # persona.md 模板
+│   ├── vector_memory_builder.md     # memory_chunks.jsonl 规范
+│   ├── worldbook_builder.md         # worldbook.md 模板
 │   ├── merger.md                    # 增量 merge
 │   └── correction_handler.md        # 对话纠正
 │
 ├── tools/                           # 工具脚本
 │   └── wechat_parser.py             # 微信记录解析
 │
-.claude/skills/{slug}/              # 生成的自我 Skill（可直接运行）
+${OUTPUT_ROOT}/{slug}/              # 生成的自我 Skill（可直接运行）
 │       ├── SKILL.md                 # 完整组合版
 │       ├── self.md                  # Part A：自我记忆
 │       ├── persona.md               # Part B：人格
+│       ├── worldbook.md             # Part C：世界书 / 风格约束
+│       ├── memory_chunks.jsonl      # 向量检索语料
 │       ├── meta.json                # 元数据
-│       ├── versions/                # 历史版本
-│       └── memories/                # 原始材料
-│           └── chats/
+│       └── versions/                # 历史版本
 │
 ├── docs/PRD.md
-├── requirements.txt
 └── LICENSE
 ```
 
@@ -279,7 +319,7 @@ create-yourself/                    # meta-skill
 
 ## 关键文件格式
 
-### `.claude/skills/{slug}/meta.json`
+### `${OUTPUT_ROOT}/{slug}/meta.json`
 
 ```json
 {
@@ -309,11 +349,11 @@ create-yourself/                    # meta-skill
 }
 ```
 
-### `.claude/skills/{slug}/SKILL.md` 结构
+### `${OUTPUT_ROOT}/{slug}/SKILL.md` 结构
 
 ```markdown
 ---
-name: self_{slug}
+name: {slug}
 description: {name}，{age}岁，{occupation}，{city}
 user-invocable: true
 ---
@@ -336,13 +376,20 @@ user-invocable: true
 
 ---
 
+## PART C：世界书 / 风格约束
+
+{worldbook.md 内容}
+
+---
+
 ## 运行规则
 
 接收到任何消息时：
 1. 先用 PART B 判断：你会怎么回应？什么态度？
 2. 再用 PART A 补充：结合你的经历和价值观
-3. 输出时始终保持 PART B 的表达风格
-4. PART B Layer 0 规则优先级最高，任何情况下不得违背
+3. 始终遵守 PART C 的风格约束、禁止项和向量召回规则
+4. 输出时始终保持 PART B 的表达风格
+5. PART B Layer 0 和 PART C 禁止项优先级最高，任何情况下不得违背
 ```
 
 ---

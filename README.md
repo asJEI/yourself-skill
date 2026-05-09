@@ -17,19 +17,13 @@
 
 ```bash
 mkdir -p .claude/skills
-git clone https://github.com/notdog1998/yourself-skill .claude/skills/create-yourself
+git clone https://github.com/asJEI/yourself-skill .claude/skills/create-yourself
 ```
 
 或全局安装：
 
 ```bash
-git clone https://github.com/notdog1998/yourself-skill ~/.claude/skills/create-yourself
-```
-
-安装依赖（可选）：
-
-```bash
-pip install -r requirements.txt
+git clone https://github.com/asJEI/yourself-skill ~/.claude/skills/create-yourself
 ```
 
 ---
