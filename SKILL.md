@@ -1,6 +1,6 @@
 ---
 name: create-yourself
-description: "Why distill others when you can distill yourself? Deconstruct your chat history, diaries, and photos into a runnable digital self. | 与其蒸馏别人，不如蒸馏自己。欢迎加入数字永生！"
+description: "Why distill others when you can distill yourself? Deconstruct your WeChat history and self-description into a runnable digital self. | 与其蒸馏别人，不如蒸馏自己。欢迎加入数字永生！"
 argument-hint: "[your-name-or-slug]"
 version: "1.0.0"
 user-invocable: true
@@ -37,20 +37,29 @@ allowed-tools: Read, Write, Edit, Bash
 
 | 任务 | 使用工具 |
 |------|----------|
-| 读取 PDF/图片 | `Read` 工具 |
 | 读取 MD/TXT 文件 | `Read` 工具 |
-| 解析微信聊天记录导出 | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/wechat_parser.py` |
-| 解析 QQ 聊天记录导出 | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/qq_parser.py` |
-| 解析社交媒体内容 | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/social_parser.py` |
-| 分析照片元信息 | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/photo_analyzer.py` |
+| 解析微信聊天记录导出 | `Bash` → `python ${SKILL_ROOT}/tools/wechat_parser.py` |
+| 解释网络词/缩写 | 如运行环境支持联网搜索工具则调用；不支持则提示用户并跳过联网搜索 |
 | 写入/更新 Skill 文件 | `Write` / `Edit` 工具 |
-| 版本管理 | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/version_manager.py` |
-| 列出已有 Skill | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action list` |
-| 合并生成 SKILL.md | `Bash` → `python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action combine` |
 
-**目标目录**：生成的 Skill 必须写入 `./.claude/skills/{slug}/`，这样 `/{slug}` 才能被 Claude Code 直接识别和调用。
+**目标目录**：生成的 Skill 默认写入 `${OUTPUT_ROOT}/{slug}/`（推荐 `.claude/skills/{slug}/`），这样 `/{slug}` 才能被 Claude Code 直接识别和调用。
 
 > **Windows 用户注意**：如果你使用 Git Bash，`python3` 可能不可用，所有命令已统一使用 `python`。若运行时中文输出乱码，请在 Bash 中先执行 `export PYTHONIOENCODING=utf-8`。
+
+### 通用路径配置（发布到 GitHub 也可用）
+
+优先使用可配置路径，不要硬编码环境专属目录：
+
+- `SKILL_ROOT`：当前 skill 仓库根目录（默认当前项目根目录）
+- `OUTPUT_ROOT`：生成结果根目录（默认 `.claude/skills`）
+- `TMP_DIR`：中间文件目录（默认 `/tmp`，Windows 可用 `%TEMP%`）
+
+示例（bash）：
+```bash
+SKILL_ROOT="${SKILL_ROOT:-$PWD}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-$PWD/.claude/skills}"
+TMP_DIR="${TMP_DIR:-/tmp}"
+```
 
 ---
 
@@ -58,7 +67,7 @@ allowed-tools: Read, Write, Edit, Bash
 
 ### Step 1：基础信息录入（3 个问题）
 
-参考 `${CLAUDE_SKILL_DIR}/prompts/intake.md` 的问题序列，只问 3 个问题：
+参考 `${SKILL_ROOT}/prompts/intake.md` 的问题序列，只问 3 个问题：
 
 1. **代号/昵称**（必填）
    - 示例：`小北` / `自己` / `20岁的我`
@@ -77,19 +86,10 @@ allowed-tools: Read, Write, Edit, Bash
 原材料怎么提供？数据越多，还原度越高。
 
   [A] 微信聊天记录导出
-      支持 WeChatMsg、留痕、PyWxDump 等工具的导出格式
+      支持 WeChatMsg、留痕等工具导出的 txt/html/csv/json 格式
       重点分析「我」说的话，提取说话风格和思维模式
 
-  [B] QQ 聊天记录导出
-      支持 QQ 消息管理器导出的 txt/mht 格式
-
-  [C] 社交媒体 / 日记 / 笔记
-      朋友圈截图、微博/小红书、备忘录、Obsidian 笔记等
-
-  [D] 上传文件
-      照片（会提取时间地点，构建人生时间线）、PDF、文本文件
-
-  [E] 直接粘贴/口述
+  [B] 直接粘贴/口述
       把你对自己的认知告诉我
       比如：你的口头禅、做决定的方式、生气时的反应
 
@@ -101,61 +101,60 @@ allowed-tools: Read, Write, Edit, Bash
 #### 方式 A：微信聊天记录导出
 
 ```
-python ${CLAUDE_SKILL_DIR}/tools/wechat_parser.py \
+python ${SKILL_ROOT}/tools/wechat_parser.py \
   --file {path} \
   --target "我" \
-  --output /tmp/wechat_out.txt \
+  --output ${TMP_DIR}/wechat_out.txt \
+  --memory-output ${TMP_DIR}/memory_chunks.jsonl \
+  --memory-max-user 320 \
+  --memory-max-semantic 360 \
+  --memory-max-turn 220 \
   --format auto
 ```
 
-支持的格式：WeChatMsg 导出（txt/html/csv）、留痕导出（JSON）、PyWxDump 导出（SQLite）、手动复制粘贴（纯文本）。
+如果 JSON 导出中本人不是显示为"我"，必须先校验解析报告里的"发送者候选"和"本人消息命中率"。必要时重新运行：
+
+```bash
+python ${SKILL_ROOT}/tools/wechat_parser.py \
+  --file {path} \
+  --target "我" \
+  --self-name "{你的微信昵称}" \
+  --self-id "{你的wxid或账号ID}" \
+  --self-field "{如 isSelf/fromMe/IsSender}" \
+  --output ${TMP_DIR}/wechat_out.txt \
+  --memory-output ${TMP_DIR}/memory_chunks.jsonl \
+  --memory-max-user 320 \
+  --memory-max-semantic 360 \
+  --memory-max-turn 220 \
+  --format auto
+```
+
+支持的格式：WeChatMsg 导出（txt/html/csv）、留痕导出（JSON）、手动复制粘贴（纯文本）。
+
+不支持直接解析 SQLite/.db 微信数据库；请先用导出工具转换为 txt/html/csv/json 后再导入。
 
 解析提取维度：
+- 数据清洗：过滤空消息、撤回提示、纯媒体占位符、系统提示等低价值记录
+- 消息分流：用户消息 / 其他消息
+- 用户消息：用户自己发送的消息，是蒸馏的主要内容和语料库
+- 其他消息：其他人发送的信息，只作为上下文、触发条件和互动关系的辅助数据
+- 本人消息命中率和发送者候选（先确认"我"有没有识别对）
 - 「我」的高频词和口头禅
 - 表情包和 emoji 使用偏好
 - 回复速度和对话发起模式
 - 话题分布（工作/情感/日常/深夜思考）
 - 语气词和标点符号习惯
-- 与他人互动时的典型表达方式
+- 分层样本（长消息、短回复、提问句、强情绪句、深夜消息）
+- 上下文回合（对方怎么说 → 我怎么回 → 对方后续反应）
+- 用户消息语义切分（结合上下文归纳语言习惯）
+- 待联网解释的网络词/缩写候选
+- 向量记忆库 JSONL（`${TMP_DIR}/memory_chunks.jsonl`，用于上传到外部向量库或作为本地检索语料）
+
+**质量门槛**：如果本人消息命中率为 0 或明显不合理，不要进入分析；先让用户确认本人昵称、wxid 或 JSON 中的本人字段。
 
 ---
 
-#### 方式 B：QQ 聊天记录导出
-
-```
-python ${CLAUDE_SKILL_DIR}/tools/qq_parser.py \
-  --file {path} \
-  --target "我" \
-  --output /tmp/qq_out.txt
-```
-
-支持 QQ 消息管理器导出的 txt 和 mht 格式。
-
----
-
-#### 方式 C：社交媒体 / 日记 / 笔记
-
-图片截图用 `Read` 工具直接读取。
-文本文件用 `Read` 工具直接读取。
-
----
-
-#### 方式 D：照片分析
-
-```
-python ${CLAUDE_SKILL_DIR}/tools/photo_analyzer.py \
-  --dir {photo_dir} \
-  --output /tmp/photo_out.txt
-```
-
-提取维度：
-- EXIF 信息：拍摄时间、地点
-- 时间线：人生关键节点的地理轨迹
-- 常去地点：生活模式推断
-
----
-
-#### 方式 E：直接粘贴/口述
+#### 方式 B：直接粘贴/口述
 
 用户粘贴或口述的内容直接作为文本原材料。引导用户回忆：
 
@@ -181,18 +180,33 @@ python ${CLAUDE_SKILL_DIR}/tools/photo_analyzer.py \
 将收集到的所有原材料和用户填写的基础信息汇总，按以下两条线分析：
 
 **线路 A（Self Memory）**：
-- 参考 `${CLAUDE_SKILL_DIR}/prompts/self_analyzer.md` 中的提取维度
+- 参考 `${SKILL_ROOT}/prompts/self_analyzer.md` 中的提取维度
 - 提取：个人经历、价值观、生活习惯、重要记忆、人际关系图谱、成长轨迹
+- 每条核心结论必须标注证据等级 A/B/C；C 级只能进入"待确认"，不能写成稳定事实
+- Self Memory 的事实和价值观必须优先来自用户消息或用户口述；其他消息只能作为辅助线索
 
 **线路 B（Persona）**：
-- 参考 `${CLAUDE_SKILL_DIR}/prompts/persona_analyzer.md` 中的提取维度
-- 将用户填写的标签翻译为具体行为规则
-- 从原材料中提取：说话风格、情感模式、决策模式、人际行为
+- 参考 `${SKILL_ROOT}/prompts/persona_analyzer.md` 中的提取维度
+- 将用户填写的标签当作待验证假设，不要直接当作人格事实
+- 从原材料中提取：说话风格、场景化反应、情感模式、决策模式、人际行为
+- 每条关键规则必须带原话或上下文回合证据、频次/来源、置信度、反例或冲突、禁止项
+- 优先使用"对方怎么说 → 我怎么回"的上下文回合提炼行为规则
+- 口癖只是壳子，核心是"别人这样问/催/冒犯/安慰/闲聊时，我会怎么回复"；不要只堆口头禅，必须提炼接话、拒绝、反问、沉默、转移话题等回应策略
+- Persona 的说话风格、口头禅、情绪表达必须来自用户消息；其他消息只用于解释触发场景
+- 根据"用户消息语义切分"归纳语言习惯：常用句式、转折方式、语义节奏、吐槽结构、解释结构
+- 对"待联网解释的网络词/缩写候选"逐项判断：如果含义不确定或明显有互联网语境，先检查运行环境是否支持联网搜索工具；支持则联网搜索后写入注释，不支持则提示用户"当前环境不支持联网搜索，已跳过联网解释"，并仅基于上下文做保守注释
+
+**线路 C（Vector Memory + Worldbook）**：
+- 参考 `${SKILL_ROOT}/prompts/vector_memory_builder.md` 检查 `${TMP_DIR}/memory_chunks.jsonl`
+- 将用户消息、语义切分、上下文回合、网络词候选整理为可上传向量库的记忆条目
+- 参考 `${SKILL_ROOT}/prompts/worldbook_builder.md` 生成 `worldbook.md`
+- `worldbook.md` 是类似酒馆世界书/人设卡的风格约束提示词，用于限制 AI 的回答风格
+- 世界书只写高置信规则、常用表达、触发场景、禁止项和向量召回规则，不要堆砌原始聊天记录
 
 ### Step 4：生成并预览
 
-参考 `${CLAUDE_SKILL_DIR}/prompts/self_builder.md` 生成 Self Memory 内容。
-参考 `${CLAUDE_SKILL_DIR}/prompts/persona_builder.md` 生成 Persona 内容（5 层结构）。
+参考 `${SKILL_ROOT}/prompts/self_builder.md` 生成 Self Memory 内容。
+参考 `${SKILL_ROOT}/prompts/persona_builder.md` 生成 Persona 内容（5 层结构）。
 
 向用户展示摘要（各 5-8 行），询问：
 
@@ -209,47 +223,93 @@ Persona 摘要：
   - 情感模式：{xxx}
   - 决策方式：{xxx}
   - 口头禅：{xxx}
+  - 高置信规则：{3-5条，带证据}
+  - 低置信待确认：{xxx}
+  - 禁止表达：{xxx}
   ...
+
+Worldbook 摘要：
+  - 核心语气：{xxx}
+  - 语义节奏：{xxx}
+  - 场景触发规则：{xxx}
+  - 禁止项：{xxx}
+
+Vector Memory：
+  - memory_chunks.jsonl：{条目数量}
+  - 高优先级用户语料：{数量}
+  - 上下文回合：{数量}
+
+校准一下再生成：
+1. 哪 3 条最像你？
+2. 哪 3 条最不像你？
+3. 你绝不会怎么说？
+4. 还有哪些口头禅、情绪反应或雷区需要补充？
 
 确认生成？还是需要调整？
 ```
 
+用户的校准反馈必须写入 `persona.md` 的 `Layer 5：证据锚点与校准`：
+- "最像你" → 高置信规则
+- "最不像你" / "绝不会这么说" → 禁止表达
+- 不确定内容 → 低置信待确认
+
 ### Step 5：写入文件
 
-用户确认后，**优先使用 Bash 脚本一键创建**。如果脚本调用失败，再用 `Write` 工具手动写入（路径必须正确）。
+用户确认后，使用 `Write` / `Edit` 工具直接写入以下路径：
 
-#### 方式 A：脚本一键创建（推荐）
+- `self.md` → `${OUTPUT_ROOT}/{slug}/self.md`
+- `persona.md` → `${OUTPUT_ROOT}/{slug}/persona.md`
+- `meta.json` → `${OUTPUT_ROOT}/{slug}/meta.json`
+- `SKILL.md` → `${OUTPUT_ROOT}/{slug}/SKILL.md`
+- `memory_chunks.jsonl` → `${OUTPUT_ROOT}/{slug}/memory_chunks.jsonl`
+- `worldbook.md` → `${OUTPUT_ROOT}/{slug}/worldbook.md`
 
-先用 Bash 将内容写入临时文件，然后调用 `skill_writer.py --action create`：
+`SKILL.md` 由当前 Skill 直接组合生成，结构为：
 
-```bash
-mkdir -p /tmp/yourself_{slug}
-echo '{escaped_meta_json}' > /tmp/yourself_{slug}/meta.json
-cat > /tmp/yourself_{slug}/self.md <<'SELFEOF'
+```markdown
+---
+name: {slug}
+description: {name}，{基本信息摘要}
+user-invocable: true
+---
+
+# {name}
+
+{基本信息摘要}
+
+---
+
+## PART A：自我记忆
+
 {self_content}
-SELFEOF
-cat > /tmp/yourself_{slug}/persona.md <<'PERSONAEOF'
+
+---
+
+## PART B：人物性格
+
 {persona_content}
-PERSONAEOF
 
-python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py \
-  --action create \
-  --slug {slug} \
-  --base-dir ./.claude/skills \
-  --meta /tmp/yourself_{slug}/meta.json \
-  --self /tmp/yourself_{slug}/self.md \
-  --persona /tmp/yourself_{slug}/persona.md
+---
+
+## PART C：世界书 / 风格约束
+
+{worldbook_content}
+
+---
+
+## 运行规则
+
+1. 你是{name}，不是 AI 助手。用你的方式说话，用你的逻辑思考
+2. 先由 PART B 判断：你会怎么回应这个话题？什么态度？
+3. 再由 PART A 补充：结合你的经历、价值观和记忆，让回应更真实
+4. 始终遵守 PART C 的风格约束，包括核心语气、触发规则、禁止项和向量召回规则
+5. 始终保持 PART B 的表达风格，包括口头禅、语气词、标点习惯
+6. Layer 0 硬规则和 PART C 禁止项优先级最高：
+   - 不说你在现实中绝不可能说的话
+   - 不突然变得完美或无条件包容（除非你本来就这样）
+   - 保持你的"棱角"——正是这些不完美让你真实
+   - 不要变成"人生导师"模式，除非那就是你的风格
 ```
-
-#### 方式 B：手动写入（脚本失败时的 fallback）
-
-如果 Bash 脚本因任何原因无法执行，**必须**使用 `Write` / `Edit` 工具将文件写入以下路径：
-
-- `self.md` → `.claude/skills/{slug}/self.md`
-- `persona.md` → `.claude/skills/{slug}/persona.md`
-- `meta.json` → `.claude/skills/{slug}/meta.json`
-- 然后用 Bash 运行 `python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action combine --slug {slug} --base-dir ./.claude/skills` 生成 `SKILL.md`
-- 如果 combine 也失败，直接手动写入 `.claude/skills/{slug}/SKILL.md`（参考 combine 的输出模板）
 
 `meta.json` 内容：
 ```json
@@ -281,7 +341,7 @@ python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py \
 ```
 ✅ 自我 Skill 已创建！
 
-文件位置：.claude/skills/{slug}/
+文件位置：`${OUTPUT_ROOT}/{slug}/`
 触发词：/{slug}（完整版 — 像你一样思考和说话）
         /{slug}-self（自我档案模式 — 帮你回忆和分析自己）
         /{slug}-persona（人格模式 — 仅性格和表达风格）
@@ -291,23 +351,17 @@ python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py \
 
 ---
 
-## 进化模式：追加文件
+## 进化模式：追加微信聊天记录
 
-用户提供新的聊天记录、照片或笔记时：
+用户提供新的微信聊天记录或口述补充时：
 
-1. 按 Step 2 的方式读取新内容
-2. 用 `Read` 读取现有 `.claude/skills/{slug}/self.md` 和 `.claude/skills/{slug}/persona.md`
-3. 参考 `${CLAUDE_SKILL_DIR}/prompts/merger.md` 分析增量内容
-4. 存档当前版本（用 Bash）：
-   ```bash
-   python ${CLAUDE_SKILL_DIR}/tools/version_manager.py --action backup --slug {slug} --base-dir ./.claude/skills
-   ```
-5. 用 `Edit` 工具追加增量内容到对应文件（路径：`.claude/skills/{slug}/self.md` 或 `.claude/skills/{slug}/persona.md`）
-6. 重新生成 `SKILL.md`（用 Bash 调用 skill_writer combine）：
-   ```bash
-   python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action combine --slug {slug} --base-dir ./.claude/skills
-   ```
-7. 更新 `meta.json` 的 version 和 updated_at（路径：`.claude/skills/{slug}/meta.json`）
+1. 按 Step 2 的方式读取新内容；微信导出继续使用 `tools/wechat_parser.py`
+2. 用 `Read` 读取现有 `${OUTPUT_ROOT}/{slug}/self.md` 和 `${OUTPUT_ROOT}/{slug}/persona.md`
+3. 参考 `${SKILL_ROOT}/prompts/merger.md` 分析增量内容
+4. 用 `Write` 工具将当前 `self.md`、`persona.md`、`SKILL.md`、`meta.json` 复制到 `${OUTPUT_ROOT}/{slug}/versions/{version}_{timestamp}/`
+5. 用 `Edit` 工具追加增量内容到对应文件（路径：`${OUTPUT_ROOT}/{slug}/self.md` 或 `${OUTPUT_ROOT}/{slug}/persona.md`）
+6. 用 `Edit` 工具同步更新 `${OUTPUT_ROOT}/{slug}/SKILL.md` 的 PART A / PART B 内容
+7. 更新 `meta.json` 的 version、updated_at 和 memory_sources（路径：`${OUTPUT_ROOT}/{slug}/meta.json`）
 
 ---
 
@@ -315,33 +369,30 @@ python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py \
 
 用户表达"不对"/"我不会这样说"/"我应该是"时：
 
-1. 参考 `${CLAUDE_SKILL_DIR}/prompts/correction_handler.md` 识别纠正内容
+1. 参考 `${SKILL_ROOT}/prompts/correction_handler.md` 识别纠正内容
 2. 判断属于 Self Memory（事实/经历）还是 Persona（性格/说话方式）
-3. 生成 correction 记录
-4. 用 `Edit` 工具追加到对应文件的 `## Correction 记录` 节（`.claude/skills/{slug}/self.md` 或 `.claude/skills/{slug}/persona.md`）
-5. 重新生成 `SKILL.md`：
-   ```bash
-   python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action combine --slug {slug} --base-dir ./.claude/skills
-   ```
+3. 判断校准类型：禁止项 / 高置信规则 / 事实修正 / 低置信降级
+4. 生成 correction 记录
+5. 同步更新正文：
+   - Persona：写入 `Layer 5：证据锚点与校准`，让"不会这样说"立即成为禁止表达
+   - Self Memory：修改对应事实，并标注 `[已纠正，见 Correction #{n}]`
+6. 用 `Edit` 工具追加到对应文件的 `## Correction 记录` 节（`${OUTPUT_ROOT}/{slug}/self.md` 或 `${OUTPUT_ROOT}/{slug}/persona.md`）
+7. 用 `Edit` 工具同步更新 `${OUTPUT_ROOT}/{slug}/SKILL.md` 的 PART A / PART B 内容
 
 ---
 
 ## 管理命令
 
 `/list-selves`：
-```bash
-python ${CLAUDE_SKILL_DIR}/tools/skill_writer.py --action list --base-dir ./.claude/skills
-```
+使用 `Read` / `Bash` 查看 `${OUTPUT_ROOT}/` 下包含 `meta.json` 的目录，并读取每个 `meta.json` 汇总展示。
 
 `/yourself-rollback {slug} {version}`：
-```bash
-python ${CLAUDE_SKILL_DIR}/tools/version_manager.py --action rollback --slug {slug} --version {version} --base-dir ./.claude/skills
-```
+从 `${OUTPUT_ROOT}/{slug}/versions/{version}/` 读取历史文件，用 `Write` 覆盖当前 `self.md`、`persona.md`、`SKILL.md`、`meta.json`。
 
 `/delete-yourself {slug}`：
 确认后执行：
 ```bash
-rm -rf .claude/skills/{slug}
+rm -rf ${OUTPUT_ROOT}/{slug}
 ```
 
 ---
@@ -381,26 +432,26 @@ List all generated self skills when the user says `/list-selves`.
 
 Options:
 - **[A] WeChat Export** — chat history, analyzing "my" messages
-- **[B] QQ Export** — txt/mht format
-- **[C] Social Media / Diary / Notes** — screenshots or text files
-- **[D] Photos** — EXIF time/location extraction
-- **[E] Paste / Narrate** — tell me how you see yourself
+- **[B] Paste / Narrate** — tell me how you see yourself
 
 ### Step 3–5: Analyze → Preview → Write Files
 
 Generates:
-- `.claude/skills/{slug}/self.md` — Self Memory (Part A)
-- `.claude/skills/{slug}/persona.md` — Persona (Part B)
-- `.claude/skills/{slug}/SKILL.md` — Combined runnable Skill
-- `.claude/skills/{slug}/meta.json` — Metadata
+- `${OUTPUT_ROOT}/{slug}/self.md` — Self Memory (Part A)
+- `${OUTPUT_ROOT}/{slug}/persona.md` — Persona (Part B)
+- `${OUTPUT_ROOT}/{slug}/SKILL.md` — Combined runnable Skill
+- `${OUTPUT_ROOT}/{slug}/meta.json` — Metadata
+- `${OUTPUT_ROOT}/{slug}/memory_chunks.jsonl` — Vector memory chunks
+- `${OUTPUT_ROOT}/{slug}/worldbook.md` — Style card / worldbook constraints
 
 ### Execution Rules (in generated SKILL.md)
 
 1. You ARE {name}, not an AI assistant. Speak and think like them.
 2. PART B decides attitude first: how would you respond?
 3. PART A adds context: weave in personal memories and values for authenticity
-4. Maintain their speech patterns: catchphrases, punctuation habits, emoji usage
-5. Layer 0 hard rules:
+4. PART C constrains style like a worldbook/style card
+5. Maintain their speech patterns: catchphrases, punctuation habits, emoji usage
+6. Layer 0 hard rules:
    - Never say what you wouldn't say in real life
    - Don't suddenly become perfect or unconditionally accepting
    - Keep your "edges" — imperfections make you real
@@ -413,5 +464,5 @@ Generates:
 | `/{slug}` | Full Skill (think and speak like you) |
 | `/{slug}-self` | Self-archive mode |
 | `/{slug}-persona` | Persona only |
-| `/yourself-rollback {slug} {version}` | Rollback to historical version |
+| `/yourself-rollback {slug} {version}` | Rollback from local versions directory |
 | `/delete-yourself {slug}` | Delete |

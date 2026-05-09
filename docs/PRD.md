@@ -3,7 +3,7 @@
 ## 产品定位
 
 自己.skill 是一个运行在 Claude Code 上的 meta-skill。
-用户提供关于自己的原材料（聊天记录、日记、照片、口述），系统将用户解构为两个可运行的模块：
+用户提供关于自己的微信聊天记录和口述补充，系统将用户解构为两个可运行的模块：
 **Part A — Self Memory（自我记忆）** 与 **Part B — Persona（人格模型）**，
 最终生成一个可独立对话的**数字生命副本**。
 
@@ -44,7 +44,7 @@ Part A（Self Memory）补充：结合你的价值观、经历、习惯，让回
 | 对象 | 外部：同事 | 外部：前任 | 内部：自己 |
 | Part A | Work Skill（工作能力） | Relationship Memory（关系记忆） | Self Memory（自我记忆） |
 | Part B | 职场 Persona | 亲密关系 Persona | 通用自我 Persona |
-| 数据源 | 飞书/钉钉/邮件 | 微信/QQ/照片 | 微信/QQ/日记/照片 |
+| 数据源 | 飞书/钉钉/邮件 | 微信/QQ/照片 | 微信聊天记录/口述 |
 | 核心目的 | 替代离职同事完成任务 | 情感疗愈与回忆 | 自我观察与对话 |
 | 视角 | 第三方观察 | 第三方回忆 | 第一人称镜像 |
 
@@ -61,9 +61,7 @@ Part A（Self Memory）补充：结合你的价值观、经历、习惯，让回
   - 自我画像（MBTI、星座、性格标签、主观印象）
   ↓
 [Step 2] 原材料导入（可跳过）
-  - 微信/QQ 聊天记录导出
-  - 社交媒体 / 日记 / 笔记
-  - 照片
+  - 微信聊天记录导出
   - 直接粘贴/口述
   ↓
 [Step 3] 自动分析
@@ -139,11 +137,7 @@ impression:  ""                        # 可选，自由文本，你对自己的
 
 | 来源 | 格式 | 提取内容 | 优先级 |
 |------|------|---------|--------|
-| 微信聊天记录 | WeChatMsg/留痕/PyWxDump | 「我」说的话、口头禅、决策模式 | ⭐⭐⭐ |
-| QQ 聊天记录 | txt/mht | 年轻时的表达方式 | ⭐⭐⭐ |
-| 日记/笔记 | md/txt/pdf | 价值观、深度思考 | ⭐⭐⭐ |
-| 社交媒体截图 | 图片 | 公开人设、兴趣分享 | ⭐⭐ |
-| 照片 | JPEG/PNG + EXIF | 时间线、地点、生活轨迹 | ⭐⭐ |
+| 微信聊天记录 | WeChatMsg/留痕导出的 txt/html/csv/json | 「我」说的话、口头禅、决策模式 | ⭐⭐⭐ |
 | 口述/粘贴 | 纯文本 | 主观自我认知 | ⭐ |
 
 ---
@@ -210,7 +204,7 @@ Layer 5 — Correction 层（对话纠正追加，滚动更新）
 ### 追加文件进化
 
 ```
-用户: 我又有新日记 @附件
+用户: 我又有新的微信聊天记录 @附件
         ↓
 系统分析新内容
         ↓
@@ -265,12 +259,7 @@ create-yourself/                    # meta-skill
 │   └── correction_handler.md        # 对话纠正
 │
 ├── tools/                           # 工具脚本
-│   ├── wechat_parser.py             # 微信记录解析
-│   ├── qq_parser.py                 # QQ 记录解析
-│   ├── social_parser.py             # 社交媒体解析
-│   ├── photo_analyzer.py            # 照片 EXIF 分析
-│   ├── skill_writer.py              # 文件管理
-│   └── version_manager.py           # 版本管理
+│   └── wechat_parser.py             # 微信记录解析
 │
 .claude/skills/{slug}/              # 生成的自我 Skill（可直接运行）
 │       ├── SKILL.md                 # 完整组合版
@@ -279,9 +268,7 @@ create-yourself/                    # meta-skill
 │       ├── meta.json                # 元数据
 │       ├── versions/                # 历史版本
 │       └── memories/                # 原始材料
-│           ├── chats/
-│           ├── photos/
-│           └── notes/
+│           └── chats/
 │
 ├── docs/PRD.md
 ├── requirements.txt
@@ -316,8 +303,7 @@ create-yourself/                    # meta-skill
   "impression": "对自己要求很高，但总是拖到最后一刻才行动",
   "memory_sources": [
     "memories/chats/wechat_2024_export.txt",
-    "memories/notes/2025_diary.md",
-    "memories/photos/travel_2023/"
+    "manual_self_description"
   ],
   "corrections_count": 2
 }
@@ -368,14 +354,9 @@ user-invocable: true
 - [x] `prompts/intake.md`
 - [x] `prompts/self_analyzer.md` + `self_builder.md`
 - [x] `prompts/persona_analyzer.md` + `persona_builder.md`
-- [x] `tools/skill_writer.py`
-- [x] `tools/version_manager.py`
 
 ### P1 — 数据接入
 - [x] `tools/wechat_parser.py`
-- [x] `tools/qq_parser.py`
-- [x] `tools/social_parser.py`
-- [x] `tools/photo_analyzer.py`
 
 ### P2 — 进化机制
 - [x] `prompts/correction_handler.md`
